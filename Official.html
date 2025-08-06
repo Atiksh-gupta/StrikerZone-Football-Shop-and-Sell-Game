@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>StrikerZone 7 ⚽ | Football Shop & Sell Game</title>
+  <meta charset="UTF-8" />
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f0f0;
+      color: #333;
+      padding: 20px;
+    }
+    .hidden { display: none; }
+    .product { border: 1px solid #ccc; padding: 10px; margin: 10px; background: #fff; display: inline-block; width: 200px; }
+    .out-of-stock { opacity: 0.4; }
+    button { padding: 6px 12px; cursor: pointer; }
+    .admin, .inventory, .wishlist, .promo, .wallet { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>StrikerZone 7 ⚽</h1>
+
+  <div id="auth">
+    <input id="email" placeholder="Email" />
+    <input id="password" type="password" placeholder="Password" />
+    <button onclick="signup()">Sign Up</button>
+    <button onclick="login()">Login</button>
+    <button onclick="logout()">Logout</button>
+  </div>
+
+  <div id="wallet" class="wallet hidden">💰 Wallet: ₹<span id="money">0</span></div>
+
+  <div id="product-list" class="shop hidden">
+    <h2>Shop</h2>
+    <div id="products"></div>
+  </div>
+
+  <div id="cart" class="hidden">
+    <h2>Cart</h2>
+    <ul id="cart-list"></ul>
+    <button onclick="checkout()">Checkout</button>
+  </div>
+
+  <div id="inventory" class="inventory hidden">
+    <h2>Inventory</h2>
+    <ul id="inventory-list"></ul>
+  </div>
+
+  <div id="wishlist" class="wishlist hidden">
+    <h2>Wishlist</h2>
+    <ul id="wishlist-list"></ul>
+  </div>
+
+  <div class="promo hidden">
+    <h3>Have a Promo Code?</h3>
+    <input id="promo-code" placeholder="Enter code" />
+    <button onclick="redeemCode()">Redeem</button>
+  </div>
+
+  <div id="admin" class="admin hidden">
+    <h2>Admin Panel</h2>
+    <p>Welcome, Admin!</p>
+    <button onclick="resetStock()">Force Reset Stock</button>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDZNvRZ5wadbC4buX3RtcJnPgfTC_JwGNE",
+      authDomain: "strikerzone-7.firebaseapp.com",
+      projectId: "strikerzone-7",
+      storageBucket: "strikerzone-7.firebasestorage.app",
+      messagingSenderId: "637069505157",
+      appId: "1:637069505157:web:96f13b53e8bc974c886fec",
+      measurementId: "G-XZ6RXTW97Q"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth();
+    const db = getFirestore();
+
+    const productsList = [
+      "Ronaldo Jersey", "Messi Boots", "CR7 Water Bottle", "Juventus Scarf",
+      "Goalkeeper Gloves", "UEFA Ball", "Training Kit", "Soccer Net", 
+      "Shin Guards", "Captain's Armband", "Football Pump", "Tactic Board"
+    ];
+
+    let stock = {};
+    let cart = [];
+    let inventory = [];
+    let wishlist = [];
+    let money = 10000;
+    let userEmail = "";
+
+    function renderProducts() {
+      const productContainer = document.getElementById("products");
+      productContainer.innerHTML = "";
+      for (let p of productsList) {
+        const available = stock[p];
+        const div = document.createElement("div");
+        div.className = "product " + (available ? "" : "out-of-stock");
+        div.innerHTML = `
+          <h4>${p}</h4>
+          <p>₹1000</p>
+          <button ${available ? "" : "disabled"} onclick="addToCart('${p}')">Add to Cart</button>
+          <button onclick="addToWishlist('${p}')">💖</button>
+        `;
+        productContainer.appendChild(div);
+      }
+    }
+
+    function addToCart(item) {
+      cart.push(item);
+      updateCart();
+    }
+
+    function updateCart() {
+      const list = document.getElementById("cart-list");
+      list.innerHTML = "";
+      for (let i of cart) {
+        const li = document.createElement("li");
+        li.textContent = i;
+        list.appendChild(li);
+      }
+    }
+
+    async function checkout() {
+      if (money < cart.length * 1000) {
+        alert("Not enough money!");
+        return;
+      }
+      money -= cart.length * 1000;
+      inventory.push(...cart);
+      cart = [];
+      document.getElementById("money").textContent = money;
+      updateCart();
+      renderInventory();
+      await updateUserData();
+    }
+
+    function renderInventory() {
+      const list = document.getElementById("inventory-list");
+      list.innerHTML = "";
+      for (let i of inventory) {
+        const li = document.createElement("li");
+        li.innerHTML = `${i} <button onclick="sellItem('${i}')">Sell for ₹800</button>`;
+        list.appendChild(li);
+      }
+    }
+
+    function sellItem(item) {
+      inventory = inventory.filter(i => i !== item);
+      money += 800;
+      document.getElementById("money").textContent = money;
+      renderInventory();
+      updateUserData();
+    }
+
+    function addToWishlist(item) {
+      if (!wishlist.includes(item)) wishlist.push(item);
+      renderWishlist();
+      updateUserData();
+    }
+
+    function renderWishlist() {
+      const list = document.getElementById("wishlist-list");
+      list.innerHTML = "";
+      for (let i of wishlist) {
+        const li = document.createElement("li");
+        li.textContent = i;
+        list.appendChild(li);
+      }
+    }
+
+    function redeemCode() {
+      const code = document.getElementById("promo-code").value.trim().toUpperCase();
+      let reward = 0;
+      if (code === "CR7GOAT") reward = 500;
+      if (code === "MESSI10") reward = 300;
+      if (code === "KICKOFF") reward = 1000;
+      if (reward > 0) {
+        money += reward;
+        alert("Promo code redeemed! +₹" + reward);
+        document.getElementById("money").textContent = money;
+        updateUserData();
+      } else {
+        alert("Invalid code!");
+      }
+    }
+
+    async function signup() {
+      const email = document.getElementById("email").value;
+      const pass = document.getElementById("password").value;
+      await createUserWithEmailAndPassword(auth, email, pass);
+    }
+
+    async function login() {
+      const email = document.getElementById("email").value;
+      const pass = document.getElementById("password").value;
+      await signInWithEmailAndPassword(auth, email, pass);
+    }
+
+    function logout() {
+      signOut(auth);
+    }
+
+    function toggleUI(show) {
+      document.querySelector(".shop").classList.toggle("hidden", !show);
+      document.getElementById("cart").classList.toggle("hidden", !show);
+      document.getElementById("inventory").classList.toggle("hidden", !show);
+      document.getElementById("wishlist").classList.toggle("hidden", !show);
+      document.querySelector(".promo").classList.toggle("hidden", !show);
+      document.getElementById("wallet").classList.toggle("hidden", !show);
+    }
+
+    async function updateUserData() {
+      if (!userEmail) return;
+      const ref = doc(db, "users", userEmail);
+      await setDoc(ref, { inventory, wishlist, money }, { merge: true });
+    }
+
+    async function loadUserData(email) {
+      const ref = doc(db, "users", email);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data = snap.data();
+        inventory = data.inventory || [];
+        wishlist = data.wishlist || [];
+        money = data.money || 10000;
+        document.getElementById("money").textContent = money;
+        renderInventory();
+        renderWishlist();
+      } else {
+        await setDoc(ref, { inventory: [], wishlist: [], money: 10000 });
+      }
+    }
+
+    function resetStock() {
+      for (let p of productsList) {
+        stock[p] = Math.random() < 0.7;
+      }
+      renderProducts();
+    }
+
+    setInterval(() => {
+      resetStock();
+      money += 500;
+      document.getElementById("money").textContent = money;
+      updateUserData();
+    }, 60000);
+
+    onAuthStateChanged(auth, async user => {
+      if (user) {
+        toggleUI(true);
+        userEmail = user.email;
+        document.getElementById("wallet").classList.remove("hidden");
+        document.getElementById("money").textContent = money;
+        await loadUserData(userEmail);
+        if (userEmail === "atiksh") {
+          document.getElementById("admin").classList.remove("hidden");
+        }
+        resetStock();
+      } else {
+        toggleUI(false);
+        userEmail = "";
+      }
+    });
+
+    resetStock();
+  </script>
+</body>
+</html>
